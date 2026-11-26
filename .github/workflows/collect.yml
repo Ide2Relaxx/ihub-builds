@@ -26,16 +26,19 @@ jobs:
     # Never on copies (forks) of the repository.
     if: github.event.repository.fork == false
     runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.pages.outcome == 'success' }}
     timeout-minutes: 350 # GitHub's limit is 360; the collector stops by itself at ~320
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
 
       - name: Tests
-        run: node --test test/
+        # The file is named: Node 22 does not search a folder by itself.
+        run: node --test test/collector.test.mjs
 
       - name: Get the saved data (data branch)
         run: |
@@ -72,6 +75,7 @@ jobs:
           git push -f "$remote" data
 
       - name: Prepare the page
+        id: pages
         if: always() && hashFiles('public/index.json') != ''
         uses: actions/upload-pages-artifact@v3
         with:
@@ -79,7 +83,8 @@ jobs:
 
   publish:
     needs: collect
-    if: always() && needs.collect.result != 'skipped'
+    # Only when there is something to publish (no error when the first run has nothing yet).
+    if: always() && needs.collect.outputs.published == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

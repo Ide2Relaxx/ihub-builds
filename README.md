@@ -39,5 +39,5 @@ workflow again (Actions → Collect LoL builds → Run workflow).
 ## Tests
 
 ```
-node --test test/
+node --test test/collector.test.mjs
 ```
