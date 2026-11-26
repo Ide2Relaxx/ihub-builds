@@ -1,0 +1,11 @@
+{
+  "platforms": ["euw1"],
+  "tiers": ["challenger", "grandmaster", "master"],
+  "maxMinutes": 320,
+  "lookbackDays": 3,
+  "patchesKept": 3,
+  "seenMax": 600000,
+  "minRoleGames": 150,
+  "minOptionGames": 20,
+  "minOptionShare": 0.03
+}

@@ -1,0 +1,5 @@
+# Saved data lives on the "data" branch, the published files on GitHub Pages.
+data/
+public/
+node_modules/
+.env

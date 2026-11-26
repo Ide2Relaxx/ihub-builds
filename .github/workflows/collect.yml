@@ -1,0 +1,90 @@
+# Once a day: collect high-elo games, compute the builds, save the totals,
+# publish the builds on GitHub Pages. Free on a public repository.
+#
+# Data: the "data" branch holds only totals and one-way hashes of the games
+# already analysed. It is replaced by one fresh commit each day (no history
+# growth); the previous day is kept in "data-backup". If the collector fails,
+# the saved data is never pushed empty: the save step checks first.
+name: Collect LoL builds
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # 03:17 UTC every day (not on the hour: GitHub is busier then)
+  workflow_dispatch: # "Run workflow" button, for a manual run
+
+permissions:
+  contents: write # push the data branch
+  pages: write # publish on GitHub Pages
+  id-token: write # required by GitHub Pages deployment
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    # Never on copies (forks) of the repository.
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # GitHub's limit is 360; the collector stops by itself at ~320
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: node --test test/
+
+      - name: Get the saved data (data branch)
+        run: |
+          if git ls-remote --exit-code --heads origin data > /dev/null; then
+            git clone --depth 2 --branch data "https://github.com/${{ github.repository }}.git" data
+          else
+            echo "No data yet: first run."
+            mkdir data
+          fi
+
+      - name: Collect games
+        id: collect
+        env:
+          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
+        run: node src/collect.mjs
+
+      - name: Compute the builds
+        if: always() && hashFiles('data/state.json') != ''
+        run: node src/build.mjs
+
+      - name: Save the data
+        if: always() && hashFiles('data/state.json') != ''
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd data
+          remote="https://x-access-token:${TOKEN}@github.com/${{ github.repository }}.git"
+          # Keep yesterday's data as a backup before replacing it.
+          if [ -d .git ]; then git push -f "$remote" HEAD:refs/heads/data-backup; fi
+          rm -rf .git
+          git init -q -b data
+          git add -A
+          git -c user.name="ihub-collector" -c user.email="ihub-collector@users.noreply.github.com" commit -q -m "Data $(date -u +%F)"
+          git push -f "$remote" data
+
+      - name: Prepare the page
+        if: always() && hashFiles('public/index.json') != ''
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  publish:
+    needs: collect
+    if: always() && needs.collect.result != 'skipped'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Publish on GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
